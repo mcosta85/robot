@@ -1,41 +1,7 @@
 (ns robot.path.a-star
-  (:require [clojure.set :refer [difference]]))
-
-(defn manhattan-distance
-  "A heuristic algorithm which ignores obstacles, and calculates distance as the
-  number of cells in straight line directions to the target. For example, if a cell
-  is 4 to the right and 2 up from the current cell, the Manhattan distance is 6.
-
-  Start and end are represented as seqs with two elements, the first being the y axis
-  and the second being the x axis from the top left of the world. For example, [1 3]
-  is one row down and 3 columns to the right.
-
-  Important Note: Manhattan Distance assumes the World is a cartesian plane."
-
-  [[start-y start-x] [end-y end-x]]
-  (* 10
-     (+ (Math/abs (- end-y start-y))
-        (Math/abs (- end-x start-x)))))
-
-(def ^:private move-costs
-  "Default cost for each move a robot can make. In cartesian space, the only
-  possible moves are diagonally or up-down-left-right."
-  {:diagonal 14
-   :straight 10})
-
-(defn straight-move?
-  "Returns true if the move was not diagonal."
-  [[y1 x1] [y2 x2]]
-  (or (= y1 y2) (= x1 x2)))
-
-(defn- weigh-move
-  "Given two nodes, determine the cost of a move from start to end."
-  [start end]
-  (if (= start end)
-    0
-    (if (straight-move? start end)
-      (:straight move-costs)
-      (:diagonal move-costs))))
+  (:require [clojure.set :refer [difference]]
+            [robot.heuristic :as heuristic]
+            [robot.move :as move]))
 
 (defn- cheapest-node
   "Given an open map, return the node within the shortest distance to then end."
@@ -78,11 +44,13 @@
       (filter-traversed world (map :coords closed))))
 
 (defn- make-node
-  ""
+  "Creates a map representing a node. The node has data about it's parent, as well
+  as how far it is from the start and end nodes."
   [coords end parent heuristic]
   {:coords coords
    :parent parent
-   :from-start (+ (weigh-move (:coords parent coords) coords) (:from-start parent 0))
+   :from-start (+ (move/weigh-move (:coords parent coords) coords)
+                  (:from-start parent 0))
    :to-end (heuristic end coords)})
 
 (defn merge-open
@@ -124,7 +92,7 @@
    (plan world start dest cartesian-neighbors))
 
   ([world start dest sense]
-   (plan world start dest sense manhattan-distance))
+   (plan world start dest sense heuristic/manhattan-distance))
   
   ([world start dest sense heuristic]
    (let [world (to-array-2d world)
@@ -135,7 +103,7 @@
        (let [neighbors (get-neighbors world curr sense closed)
              o (reduce #(conj %1 (make-node %2 dest curr heuristic)) [] neighbors)
              open (flatten (merge-open o open))
-             nxt (cheapest-node o)]
+             nxt (cheapest-node open)]
 
          (if (= (:coords curr) dest)
            (reverse (get-path curr))
